@@ -1,0 +1,27 @@
+{
+  "name": "webrtc_practice",
+  "version": "1.0.0",
+  "main": "index.js",
+ "scripts": {
+  "start": "node server.js",
+  "dev": "NODE_ENV=development nodemon server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jyoshnagr/Webrtc_practice.git"
+  },
+  "dependencies": {
+  "express": "^4.19.2",
+  "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+  "nodemon": "^3.1.0"
+  },
+  "author": "Jyoshna",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jyoshnagr/Webrtc_practice/issues"
+  },
+  "homepage": "https://github.com/jyoshnagr/Webrtc_practice#readme",
+  "description": ""
+}
