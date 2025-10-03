@@ -18,6 +18,15 @@ const hangupBtn = $('#hangupBtn');
 const status = $('#status');
 const remoteAudio = $('#remoteAudio');
 
+const callerRingtone = document.getElementById('callerRingtone');
+
+function startCallerRingtone() {
+  try { callerRingtone.currentTime = 0; callerRingtone.play(); } catch (e) {}
+}
+function stopCallerRingtone() {
+  try { callerRingtone.pause(); callerRingtone.currentTime = 0; } catch (e) {}
+}
+
 socket.on('agents:list', (list) => {
   console.log(list)
   agentSelect.innerHTML = '';
@@ -61,6 +70,7 @@ callBtn.onclick = async () => {
 
   status.textContent = 'Calling agent…';
   socket.emit('call:place', { agentId, offer, callerName: callerName.value || 'Caller' });
+  startCallerRingtone();
 };
 
 socket.on('call:ringing', ({ callId, agentName }) => {
@@ -69,16 +79,19 @@ socket.on('call:ringing', ({ callId, agentName }) => {
 });
 
 socket.on('call:accepted', async ({ answer }) => {
+  stopCallerRingtone(); 
   status.textContent = 'Connected.';
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
 });
 
 socket.on('call:declined', ({ reason }) => {
+  stopCallerRingtone(); 
   status.textContent = `Call declined: ${reason || ''}`;
   cleanup();
 });
 
 socket.on('call:error', ({ reason }) => {
+  stopCallerRingtone(); 
   status.textContent = `Call error: ${reason}`;
   cleanup();
 });
@@ -88,6 +101,7 @@ socket.on('webrtc:ice', async ({ candidate }) => {
 });
 
 socket.on('call:hangup', () => {
+  stopCallerRingtone(); 
   status.textContent = 'Call ended by remote.';
   cleanup();
 });
@@ -95,6 +109,7 @@ socket.on('call:hangup', () => {
 hangupBtn.onclick = () => {
   if (!currentCallId) return;
   socket.emit('call:hangup', { callId: currentCallId });
+  stopCallerRingtone(); 
   status.textContent = 'Call ended.';
   cleanup();
 };

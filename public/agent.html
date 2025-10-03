@@ -23,9 +23,16 @@
 <button id="declineBtn" class="btn secondary" disabled>Decline</button>
 <button id="hangupBtn" class="btn secondary" disabled>Hang Up</button>
 </div>
+<div class="row" id="inCallControls" style="margin-top:10px; display:none;">
+  <button id="muteBtn" class="btn secondary" disabled>Mute</button>
+  <button id="unmuteBtn" class="btn secondary" disabled>Unmute</button>
+  <button id="hangupBtn" class="btn secondary" disabled>Hang Up</button>
+</div>
 <div class="audio">
 <div class="hint">Remote audio will play here when connected:</div>
-<audio id="remoteAudio" autoplay playsinline></audio>
+<!-- <audio id="remoteAudio" autoplay playsinline></audio> -->
+ <audio id="remoteAudio" autoplay playsinline></audio>
+ <audio id="agentRingtone" src="/sounds/ringtone.mp3" loop></audio>
 </div>
 </div>
 </div>
