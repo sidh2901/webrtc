@@ -10,13 +10,34 @@
 <h2>Caller Console</h2>
 <div class="row">
 <input id="callerName" placeholder="Your name" />
+<select id="callerLanguage">
+  <option value="English">English</option>
+  <option value="Spanish">Spanish</option>
+  <option value="French">French</option>
+  <option value="German">German</option>
+  <option value="Italian">Italian</option>
+  <option value="Portuguese">Portuguese</option>
+  <option value="Chinese">Chinese</option>
+  <option value="Japanese">Japanese</option>
+  <option value="Korean">Korean</option>
+  <option value="Hindi">Hindi</option>
+  <option value="Arabic">Arabic</option>
+  <option value="Russian">Russian</option>
+</select>
 <select id="agentSelect"></select>
 <button id="callBtn" class="btn">Call</button>
 <button id="hangupBtn" class="btn secondary" disabled>Hang Up</button>
 </div>
+<div class="row" style="margin-top: 10px;">
+<label>
+  <input type="checkbox" id="enableTranslation" checked />
+  Enable Real-time Translation
+</label>
+</div>
 <div class="hint">Agents shown are currently online and available.</div>
 <hr />
 <div id="status">Idle.</div>
+<div id="translationStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
 <div class="audio">
 <div class="hint">Remote audio will play here when connected:</div>
 <audio id="remoteAudio" autoplay playsinline></audio>

@@ -1,18 +1,25 @@
-// public/agent.js
+import { AudioProcessor, TranslationEngine } from './audio-processor.js';
+
 const socket = io();
 let pc = null;
 let localStream = null;
 let currentCallId = null;
 let lastIncomingOffer = null;
+let audioProcessor = null;
+let translationEngine = null;
+let remoteLanguage = 'English';
 
 const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 const $ = (s) => document.querySelector(s);
 const agentNameInput = $('#agentName');
+const agentLanguageSelect = $('#agentLanguage');
+const enableTranslationCheckbox = $('#enableTranslation');
 const registerBtn = $('#registerBtn');
 const toggleAvailBtn = $('#toggleAvailBtn');
 const statusBadge = $('#status');
 const incomingDiv = $('#incoming');
+const translationStatusDiv = $('#translationStatus');
 const acceptBtn = $('#acceptBtn');
 const declineBtn = $('#declineBtn');
 const hangupBtn = $('#hangupBtn');
@@ -36,15 +43,20 @@ function showInCallControls(show) {
   hangupBtn.disabled = !show;
 }
 
+function updateTranslationStatus(message) {
+  translationStatusDiv.textContent = message;
+}
+
 let isRegistered = false;
 
 registerBtn.onclick = () => {
   console.log('[agent] Go Online clicked');
-  socket.emit('agent:register', { name: agentNameInput.value || 'Agent' });
-  
+  socket.emit('agent:register', {
+    name: agentNameInput.value || 'Agent',
+    language: agentLanguageSelect.value
+  });
 
   if (isRegistered) return;
-//   socket.emit('agent:register', { name: agentNameInput.value || 'Agent' });
   isRegistered = true;
   statusBadge.textContent = 'online (available)';
   toggleAvailBtn.disabled = false;
@@ -58,16 +70,18 @@ toggleAvailBtn.onclick = () => {
   statusBadge.textContent = next ? 'online (available)' : 'online (unavailable)';
 };
 
-// --- Socket handlers ---
-socket.on('call:incoming', ({ callId, callerName, offer }) => {
-  console.log('[agent] incoming call event')
+socket.on('call:incoming', ({ callId, callerName, offer, callerLanguage }) => {
+  console.log('[agent] incoming call event');
   currentCallId = callId;
   lastIncomingOffer = offer;
-  incomingDiv.textContent = `Call from ${callerName || 'Caller'}`;
+  remoteLanguage = callerLanguage || 'English';
+  incomingDiv.textContent = `Call from ${callerName || 'Caller'} (${remoteLanguage})`;
   acceptBtn.disabled = false;
   declineBtn.disabled = false;
-  showInCallControls(false);     // controls appear after accept
-  startAgentRingtone(); 
+  showInCallControls(false);
+  startAgentRingtone();
+
+  updateTranslationStatus(`Caller speaks ${remoteLanguage}`);
 });
 
 socket.on('webrtc:ice', async ({ candidate }) => {
@@ -76,16 +90,23 @@ socket.on('webrtc:ice', async ({ candidate }) => {
 
 socket.on('connect', () => console.log('[agent] connected', socket.id));
 
-
 socket.on('call:hangup', () => {
   resetCallState();
 });
 
-// --- Buttons ---
+socket.on('translation:text', ({ original, translated }) => {
+  if (translated) {
+    updateTranslationStatus(`Remote said: "${original}" → "${translated}"`);
+  }
+});
+
 acceptBtn.onclick = async () => {
   if (!currentCallId || !lastIncomingOffer) return;
-  acceptBtn.disabled = true; declineBtn.disabled = true; hangupBtn.disabled = false;
+  acceptBtn.disabled = true;
+  declineBtn.disabled = true;
+  hangupBtn.disabled = false;
   stopAgentRingtone();
+
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
   pc = new RTCPeerConnection(servers);
@@ -93,34 +114,64 @@ acceptBtn.onclick = async () => {
   pc.onicecandidate = (e) => {
     if (e.candidate) socket.emit('webrtc:ice', { callId: currentCallId, candidate: e.candidate });
   };
-  pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; };
+  pc.ontrack = (e) => {
+    remoteAudio.srcObject = e.streams[0];
+  };
 
   await pc.setRemoteDescription(new RTCSessionDescription(lastIncomingOffer));
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  socket.emit('call:accept', { callId: currentCallId, answer });
-  showInCallControls(true); 
-};
-pc.ontrack = (e) => {
-  const el = document.getElementById('remoteAudio');
-  if (el) {
-    el.srcObject = e.streams[0];
+  socket.emit('call:accept', {
+    callId: currentCallId,
+    answer,
+    agentLanguage: agentLanguageSelect.value
+  });
+
+  showInCallControls(true);
+
+  const myLanguage = agentLanguageSelect.value;
+  const enableTranslation = enableTranslationCheckbox.checked;
+
+  translationEngine = new TranslationEngine(myLanguage, remoteLanguage, enableTranslation);
+
+  if (enableTranslation && myLanguage !== remoteLanguage) {
+    updateTranslationStatus(`Translation enabled: ${myLanguage} ↔ ${remoteLanguage}`);
+    startTranslation();
   } else {
-    console.warn('[agent] remoteAudio element not found when ontrack fired');
+    updateTranslationStatus('Translation disabled or same language');
   }
 };
+
+function startTranslation() {
+  if (!localStream || !translationEngine) return;
+
+  audioProcessor = new AudioProcessor();
+
+  audioProcessor.startRecording(localStream, async (audioBlob) => {
+    const { original, translated } = await translationEngine.processOutgoingAudio(audioBlob);
+
+    if (translated && currentCallId) {
+      socket.emit('translation:text', {
+        callId: currentCallId,
+        original,
+        translated
+      });
+      updateTranslationStatus(`You said: "${original}"`);
+    }
+  });
+}
 
 declineBtn.onclick = () => {
   if (!currentCallId) return;
   socket.emit('call:decline', { callId: currentCallId, reason: 'Agent declined' });
-  stopAgentRingtone();  
+  stopAgentRingtone();
   resetCallState();
 };
 
 hangupBtn.onclick = () => {
   if (!currentCallId) return;
   socket.emit('call:hangup', { callId: currentCallId });
-  stopAgentRingtone();  
+  stopAgentRingtone();
   resetCallState();
 };
 
@@ -130,18 +181,32 @@ muteBtn.onclick = () => {
   muteBtn.disabled = true;
   unmuteBtn.disabled = false;
 };
+
 unmuteBtn.onclick = () => {
   if (!localStream) return;
   localStream.getAudioTracks().forEach(t => t.enabled = true);
   muteBtn.disabled = false;
   unmuteBtn.disabled = true;
 };
-// --- Helpers ---
+
 function resetCallState() {
   incomingDiv.textContent = 'No calls yet.';
-  acceptBtn.disabled = true; declineBtn.disabled = true; hangupBtn.disabled = true;
-   showInCallControls(false);
-  lastIncomingOffer = null; currentCallId = null;
+  acceptBtn.disabled = true;
+  declineBtn.disabled = true;
+  hangupBtn.disabled = true;
+  showInCallControls(false);
+  lastIncomingOffer = null;
+  currentCallId = null;
+  remoteLanguage = 'English';
+
+  if (audioProcessor) {
+    audioProcessor.stopRecording();
+    audioProcessor = null;
+  }
+
+  translationEngine = null;
+  updateTranslationStatus('');
+
   try { pc?.getSenders().forEach(s => s.track?.stop()); } catch {}
   try { pc?.close(); } catch {}
   pc = null;

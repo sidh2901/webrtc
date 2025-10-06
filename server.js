@@ -1,12 +1,17 @@
 // server.js
+require('dotenv').config();
 const path = require('path');
 const express = require('express');
+const multer = require('multer');
+const OpenAI = require('openai').default;
 const app = express();
 const http = require('http').createServer(app);
 const { Server } = require('socket.io');
 const io = new Server(http, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 3000;
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.resolve(__dirname, 'public'), { extensions: ['html'] }));
@@ -48,6 +53,90 @@ function sendAgentsList(sock) {
 // --- Debug endpoint so you can verify server state in the browser ---
 app.get('/api/debug/agents', (_req, res) => res.json(currentAgents()));
 
+// === OpenAI API Routes ===
+
+// Speech-to-Text endpoint
+app.post('/api/stt', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
+
+    const file = new File([req.file.buffer], 'audio.webm', { type: req.file.mimetype || 'audio/webm' });
+
+    const result = await openai.audio.transcriptions.create({
+      model: 'whisper-1',
+      file,
+    });
+
+    res.json({ text: result.text || '' });
+  } catch (err) {
+    console.error('STT error:', err?.message || err);
+    res.status(500).json({ error: 'STT failed' });
+  }
+});
+
+// Translation endpoint
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text, targetLang } = req.body;
+
+    if (!text || !targetLang) {
+      return res.status(400).json({ error: 'Both text and targetLang are required' });
+    }
+
+    const chat = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a professional interpreter. Translate the user's message to ${targetLang}. Return only the translation with natural tone and correct punctuation.`,
+        },
+        { role: 'user', content: text },
+      ],
+    });
+
+    const translated = chat.choices?.[0]?.message?.content?.trim() || '';
+    res.json({ translated });
+  } catch (err) {
+    console.error('Translation error:', err?.message || err);
+    res.status(500).json({ error: 'Translation failed' });
+  }
+});
+
+// Text-to-Speech endpoint
+app.post('/api/tts', async (req, res) => {
+  try {
+    const { text, voice = 'alloy', format = 'mp3' } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Field text is required' });
+    }
+
+    const response = await openai.audio.speech.create({
+      model: 'tts-1',
+      voice,
+      input: text,
+      response_format: format,
+    });
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    const contentType = format === 'wav' ? 'audio/wav'
+      : format === 'opus' ? 'audio/ogg'
+      : format === 'flac' ? 'audio/flac'
+      : format === 'aac' ? 'audio/aac'
+      : 'audio/mpeg';
+
+    res.set('Content-Type', contentType);
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error('TTS error:', err?.message || err);
+    res.status(500).json({ error: 'TTS failed' });
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('[server] socket connected', socket.id);
 
@@ -74,7 +163,7 @@ io.on('connection', (socket) => {
   });
 
   // === Calls ===
-  socket.on('call:place', ({ agentId, offer, callerName }) => {
+  socket.on('call:place', ({ agentId, offer, callerName, callerLanguage }) => {
     const agent = agents.get(agentId);
     if (!agent) {
       console.warn('[server] call error: agent not found', agentId);
@@ -98,13 +187,14 @@ io.on('connection', (socket) => {
       callId,
       fromSocketId: socket.id,
       callerName: callerName || 'Caller',
+      callerLanguage: callerLanguage || 'English',
       offer
     });
     socket.emit('call:ringing', { callId, agentName: agent.name });
   });
 
-  socket.on('call:accept', ({ callId, answer }) => {
-    socket.to(callId).emit('call:accepted', { answer });
+  socket.on('call:accept', ({ callId, answer, agentLanguage }) => {
+    socket.to(callId).emit('call:accepted', { answer, agentLanguage: agentLanguage || 'English' });
   });
 
   socket.on('call:decline', ({ callId, reason }) => {
@@ -123,6 +213,10 @@ io.on('connection', (socket) => {
     io.socketsLeave(callId);
     const a = agents.get(socket.id);
     if (a) { a.busy = false; broadcastAgents(); }
+  });
+
+  socket.on('translation:text', ({ callId, original, translated }) => {
+    socket.to(callId).emit('translation:text', { original, translated });
   });
 
   socket.on('disconnect', () => {

@@ -10,14 +10,35 @@
 <h2>Agent Console</h2>
 <div class="row">
 <input id="agentName" placeholder="Your display name" />
+<select id="agentLanguage">
+  <option value="English">English</option>
+  <option value="Spanish">Spanish</option>
+  <option value="French">French</option>
+  <option value="German">German</option>
+  <option value="Italian">Italian</option>
+  <option value="Portuguese">Portuguese</option>
+  <option value="Chinese">Chinese</option>
+  <option value="Japanese">Japanese</option>
+  <option value="Korean">Korean</option>
+  <option value="Hindi">Hindi</option>
+  <option value="Arabic">Arabic</option>
+  <option value="Russian">Russian</option>
+</select>
 <button id="registerBtn" class="btn">Go Online</button>
 <button id="toggleAvailBtn" class="btn secondary" disabled>Toggle Available</button>
 <span id="status" class="badge">offline</span>
+</div>
+<div class="row" style="margin-top: 10px;">
+<label>
+  <input type="checkbox" id="enableTranslation" checked />
+  Enable Real-time Translation
+</label>
 </div>
 <hr />
 <div>
 <h3>Incoming Call</h3>
 <div id="incoming">No calls yet.</div>
+<div id="translationStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
 <div class="row">
 <button id="acceptBtn" class="btn" disabled>Accept</button>
 <button id="declineBtn" class="btn secondary" disabled>Decline</button>
